@@ -12,6 +12,6 @@
 		"vibe-d:tls": "openssl-1.1"
 	},
 	"description": "Twitter tweeting library",
-	"license": "Unlicense",
+	"license": "MIT",
 	"name": "dtweet"
 }
