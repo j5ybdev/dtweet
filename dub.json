@@ -1,0 +1,17 @@
+{
+	"authors": [
+		"Jeffrey Buhr"
+	],
+	"copyright": "Copyright © 2021, Jeffrey Buhr",
+	"targetType": "library",
+	"dependencies": {
+		"vibe-d": "~>0.9.4",
+		"vibe-d:tls": ">=0.0.0"
+	},
+	"subConfigurations": {
+		"vibe-d:tls": "openssl-1.1"
+	},
+	"description": "Twitter tweeting library",
+	"license": "Unlicense",
+	"name": "dtweet"
+}

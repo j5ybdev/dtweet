@@ -1,0 +1,16 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/dtweet
+dtweet.so
+dtweet.dylib
+dtweet.dll
+libdtweet.a
+dtweet.a
+dtweet.lib
+dtweet-test-*
+*.exe
+*.o
+*.obj
+*.lst
