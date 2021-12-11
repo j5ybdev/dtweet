@@ -1,0 +1,14 @@
+{
+   "name": "tweet-curl",
+   "description": "Tweet test",
+	"authors": [ "Jeffrey Buhr" ],
+	"copyright": "Copyright © 2021, Jeffrey Buhr",
+	"dependencies": {
+      "dtweet": {
+         "path": "../../"
+      }
+	},
+   "subConfigurations": {
+		"vibe-d:tls": "openssl-1.1"
+	}
+}

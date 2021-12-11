@@ -8,10 +8,9 @@ import std.digest.sha : SHA1;
 import std.digest : toHexString;
 import std.string : representation;
 import std.base64;
+import std.format : format;
 import std.uuid;
 import std.datetime : Clock;
-import std.uri : encode, encodeComponent;
-import vibe.vibe : urlEncode;
 
 interface Tweeter {
    TweetResp tweet(in ref TwitterCreds creds, string msg);
@@ -32,16 +31,50 @@ class VibeTweeter : Tweeter {
       requestHTTP(TWEET_URL,
          (scope req) {
             req.method = HTTPMethod.POST;
-            req.headers["Authorization"] = authHdr;
+            req.headers[HDR_AUTHORIZATION] = authHdr;
             req.writeFormBody([PARAM_STATUS: msg]);
          },
          (scope res) {
             resp.statusCode = to!short(res.statusCode);
-            resp.contentType = res.headers["Content-Type"];
+            resp.contentType = res.headers[HDR_CONTENT_TYPE];
             resp.respBody = res.bodyReader.readAllUTF8();
             res.destroy();
          }
       );
+
+      return resp;
+   }
+}
+
+class CurlTweeter : Tweeter {
+
+   /**
+   * Send out one tweet message to the twitter API
+   */
+   TweetResp tweet(in ref TwitterCreds creds, string msg) {
+      import std.net.curl : HTTP;
+
+      const string authHdr = getAuthHeader(creds,msg);
+      const string payload = format("%s=%s", PARAM_STATUS, urlEncode(msg));
+
+      TweetResp resp;
+      auto http = HTTP(TWEET_URL);
+      http.method(HTTP.Method.post);
+      http.addRequestHeader(HDR_AUTHORIZATION, authHdr);
+      http.setPostData(payload, CONTENT_TYPE_FORM);
+      http.onReceiveHeader = (in char[] key, in char[] value) {
+         if (key == HDR_CONTENT_TYPE) {
+            resp.contentType = value.dup;
+         }
+      };
+      http.onReceive = (ubyte[] data) {
+         resp.respBody = cast(string) data;
+         return data.length;
+      };
+      http.onReceiveStatusLine = (HTTP.StatusLine status) {
+         resp.statusCode = status.code;
+      };
+      http.perform();
 
       return resp;
    }
@@ -52,7 +85,7 @@ class NoOpTweeter : Tweeter {
    TweetResp tweet(in ref TwitterCreds creds, string msg) {
       TweetResp resp = {
          statusCode: 200,
-         contentType: "text/plain",
+         contentType: CONTENT_TYPE_TEXT,
          respBody: ""
       };
       return resp;
@@ -70,10 +103,14 @@ struct TweetResp {
 }
 
 struct TwitterCreds {
-   string consumerKey; // API Key
-   string consumerSecret; // API Secret Key
-   string token; // access token
-   string tokenSecret; // value which identifies the account your application is acting on behalf of
+   /// API Key
+   string consumerKey;
+   /// API Secret Key
+   string consumerSecret;
+   /// access token
+   string token; 
+   /// value which identifies the account your application is acting on behalf of
+   string tokenSecret;
 }
 
 enum TWEET_URL = TWITTER_API_TWEET ~ "?" ~ PARAM_INC_ENTITIES ~ "=" ~ INC_ENTITIES;
@@ -103,6 +140,10 @@ private enum PARAM_TIMESTAMP = "oauth_timestamp";
 private enum PARAM_TOKEN = "oauth_token";
 private enum PARAM_VERSION = "oauth_version";
 private enum INC_ENTITIES = "true";
+private enum CONTENT_TYPE_FORM = "application/x-www-form-urlencoded";
+private enum CONTENT_TYPE_TEXT = "text/plain";
+private enum HDR_AUTHORIZATION = "Authorization";
+private enum HDR_CONTENT_TYPE = "Content-Type";
 
 private string signRequest(in ref TwitterCreds creds, string nounce, long timestamp, string msg) {
    Tuple!(string, string)[] params;
@@ -117,11 +158,13 @@ private string signRequest(in ref TwitterCreds creds, string nounce, long timest
    params ~= tuple(PARAM_STATUS,urlEncode(msg));
    
    auto p1 = appender!string();
-   foreach (i, p; params) {
-      if (i > 0) p1 ~= "&";
+   string sep = "";
+   foreach (ref p; params) {
+      p1 ~= sep;
       p1 ~= p[0];
       p1 ~= "=";
       p1 ~= p[1];
+      sep = "&";
    }
 
    const string signingKey = urlEncode(creds.consumerSecret) ~ "&" ~ urlEncode(creds.tokenSecret);
@@ -148,7 +191,6 @@ unittest {
    const long timestamp = 1318622958;
    const string nounce = "kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg";
    const string msg = "Hello Ladies + Gentlemen, a signed OAuth request!";
-
    assert(signRequest(creds,nounce,timestamp,msg) == "hCtSmYh+iHYCEqBWrE7C7hYmtUk=");
 }
 
@@ -197,16 +239,28 @@ private string buildAuthHeader(in ref TwitterCreds creds, string nounce, string 
    
    auto hdr = appender!string();
    hdr ~= AUTH_TYPE;
-   foreach (i, p; params) {
-      if (i > 0) hdr ~= ",";
+   string sep = "";
+   foreach (ref p; params) {
+      hdr ~= sep;
       hdr ~= " ";
       hdr ~= urlEncode(p[0]);
       hdr ~= "=\"";
       hdr ~= urlEncode(p[1]);
       hdr ~= "\"";
+      sep = ",";
    }
 
    return hdr.data;
+}
+
+/**
+* Encode URL parameters.
+* Must abide by RFC 3986, Section 2.1 to avoid Oauth signature failures.
+* See https://developer.twitter.com/en/docs/authentication/oauth-1-0a/percent-encoding-parameters
+*/
+private string urlEncode(string inStr) {
+   import vibe.vibe : urlEncode;
+   return urlEncode(inStr);
 }
 
 unittest {
